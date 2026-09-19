@@ -1,0 +1,25 @@
+# Builds
+build/
+cmake-build-*/
+*.o
+*.obj
+*.a
+*.so
+*.exe
+*.out
+
+# Node
+node_modules/
+frontend/dist/
+frontend/.vite/
+
+# Editors / OS
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+
+# Logs / temp
+*.log
+*.tmp

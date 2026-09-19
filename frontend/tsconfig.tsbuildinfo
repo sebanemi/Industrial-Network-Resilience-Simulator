@@ -1,0 +1,1 @@
+{"root":["./src/app.tsx","./src/main.tsx","./src/api/client.ts","./src/canvas/geometry.ts","./src/canvas/usepanzoom.ts","./src/components/factorycanvas.tsx","./src/components/nodeformpanel.tsx","./src/components/statuspanel.tsx","./src/components/toolbar.tsx","./src/models/presets.ts","./src/models/types.ts","./src/state/store.tsx"],"version":"5.6.3"}

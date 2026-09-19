@@ -1,0 +1,430 @@
+#include "api/api.h"
+
+#include <optional>
+#include <string>
+#include <utility>
+
+#include "graph/edge.hpp"
+#include "routing/dijkstra.hpp"
+
+namespace sim {
+
+namespace {
+
+using namespace std::string_literals;
+
+constexpr const char* kJsonContentType = "application/json";
+
+crow::response jsonResponse(crow::json::wvalue w, int code = 200) {
+    crow::response res(code);
+    res.body = w.dump() + "\n";
+    res.set_header("Content-Type", kJsonContentType);
+    return res;
+}
+
+crow::response jsonError(int code, std::string message) {
+    crow::json::wvalue body;
+    body["error"] = std::move(message);
+    return jsonResponse(std::move(body), code);
+}
+
+crow::json::wvalue internetToJson(bool available) {
+    crow::json::wvalue w;
+    w["available"] = available;
+    w["contingencyEngaged"] = !available;
+    return w;
+}
+
+crow::json::wvalue nodeToJson(const Node& node, std::optional<bool> reachable = std::nullopt) {
+    crow::json::wvalue w;
+    w["id"] = node.id;
+    w["name"] = node.name;
+    w["type"] = std::string(toString(node.type));
+    w["x"] = node.position.x;
+    w["y"] = node.position.y;
+    if (node.hasRange()) {
+        w["range"] = node.range.value();
+    } else {
+        w["range"] = crow::json::wvalue(); // null
+    }
+    w["status"] = std::string(toString(node.status));
+    if (reachable.has_value()) {
+        w["reachable"] = reachable.value();
+    }
+    return w;
+}
+
+crow::json::wvalue edgeToJson(const Edge& edge) {
+    crow::json::wvalue w;
+    w["from"] = edge.from;
+    w["to"] = edge.to;
+    w["weight"] = edge.weight;
+    return w;
+}
+
+crow::json::wvalue routeToJson(const Route& route, const std::string& source,
+                               const std::string& destination) {
+    crow::json::wvalue w;
+    w["source"] = source;
+    w["destination"] = destination;
+    w["reachable"] = route.reachable;
+    w["total_cost"] = route.total_cost;
+    w["path"] = crow::json::wvalue::list();
+    for (size_t i = 0; i < route.path.size(); ++i) {
+        w["path"][static_cast<unsigned>(i)] = route.path[i];
+    }
+    return w;
+}
+
+bool parseDouble(const crow::json::rvalue& value, double& out) {
+    if (value.t() != crow::json::type::Number) {
+        return false;
+    }
+    out = value.d();
+    return true;
+}
+
+bool parseBool(const crow::json::rvalue& value, bool& out) {
+    if (value.t() == crow::json::type::True || value.t() == crow::json::type::False) {
+        out = value.b();
+        return true;
+    }
+    return false;
+}
+
+bool parseString(const crow::json::rvalue& value, std::string& out) {
+    if (value.t() != crow::json::type::String) {
+        return false;
+    }
+    out = std::string(value.s());
+    return true;
+}
+
+// Aplica el default de rango cuando el nodo lo requiere y no trae rango.
+void applyDefaultRange(Node& node) {
+    if (node.hasRange()) {
+        return;
+    }
+    switch (node.type) {
+        case NodeType::Esp32:
+            node.range = Node::kDefaultEspRange;
+            break;
+        case NodeType::Server:
+            node.range = Node::kDefaultServerRange;
+            break;
+        case NodeType::Sensor:
+            break;
+    }
+}
+
+// Parsea un payload de creación de nodo. Devuelve true si es válido.
+bool parseNodeCreate(const crow::json::rvalue& body, Node& out, std::string& error) {
+    if (!body.has("id") || body["id"].t() != crow::json::type::String) {
+        error = "campo 'id' requerido (string)";
+        return false;
+    }
+    if (!body.has("type") || body["type"].t() != crow::json::type::String) {
+        error = "campo 'type' requerido (SENSOR|ESP32|SERVER)";
+        return false;
+    }
+    if (!body.has("x") || !body.has("y")) {
+        error = "campos 'x' e 'y' requeridos";
+        return false;
+    }
+    double x, y;
+    if (!parseDouble(body["x"], x) || !parseDouble(body["y"], y)) {
+        error = "'x'/'y' deben ser números";
+        return false;
+    }
+    const auto type = nodeTypeFromString(std::string(body["type"].s()));
+    if (!type.has_value()) {
+        error = "tipo inválido: '" + std::string(body["type"].s()) + "'";
+        return false;
+    }
+
+    Node node;
+    node.id = std::string(body["id"].s());
+    node.type = type.value();
+    node.position = {x, y};
+    node.name = node.id;
+
+    if (body.has("name") && parseString(body["name"], node.name) && node.name.empty()) {
+        error = "'name' no puede estar vacío";
+        return false;
+    }
+    if (body.has("range")) {
+        if (body["range"].t() == crow::json::type::Null) {
+            node.range = std::nullopt;
+        } else {
+            double range;
+            if (!parseDouble(body["range"], range)) {
+                error = "'range' debe ser número o null";
+                return false;
+            }
+            node.range = range;
+        }
+    }
+    if (body.has("status")) {
+        const auto status = nodeStatusFromString(std::string(body["status"].s()));
+        if (!status.has_value()) {
+            error = "'status' inválido (ONLINE|OFFLINE)";
+            return false;
+        }
+        node.status = status.value();
+    }
+
+    applyDefaultRange(node);
+
+    if (!Network::validPosition(x, y) || !Network::validRange(node.range)) {
+        error = "posición (x>=0, y>=0) o rango (>0) inválidos";
+        return false;
+    }
+    out = std::move(node);
+    return true;
+}
+
+} // namespace
+
+void registerApiRoutes(crow::SimpleApp& app, Network& network) {
+
+    // ---- GET /api/simulation -------------------------------------------------
+    CROW_ROUTE(app, "/api/simulation")
+        .methods(crow::HTTPMethod::Get)([&network]() {
+            const std::string server = network.serverId();
+            const Graph graph = network.buildGraph();
+            const std::vector<std::string> isolated = network.isolatedNodes();
+
+            crow::json::wvalue w;
+            w["factory"]["width"] = network.factory().width;
+            w["factory"]["height"] = network.factory().height;
+            w["internet"]["available"] = network.internetAvailable();
+            w["internet"]["contingencyEngaged"] = !network.internetAvailable();
+
+            unsigned idx = 0;
+            for (const auto& [id, node] : network.nodes()) {
+                const Route r = Dijkstra::shortestPath(graph, id, server);
+                w["nodes"][idx++] = nodeToJson(node, r.reachable);
+            }
+            idx = 0;
+            for (const Edge& e : network.connections()) {
+                w["connections"][idx++] = edgeToJson(e);
+            }
+            idx = 0;
+            for (const std::string& id : isolated) {
+                w["isolated"][idx++] = id;
+            }
+            return jsonResponse(std::move(w));
+        });
+
+    // ---- GET/PUT /api/factory ------------------------------------------------
+    CROW_ROUTE(app, "/api/factory")
+        .methods(crow::HTTPMethod::Get, crow::HTTPMethod::Put)(
+            [&network](const crow::request& req) {
+                if (req.method == crow::HTTPMethod::Get) {
+                    crow::json::wvalue w;
+                    w["width"] = network.factory().width;
+                    w["height"] = network.factory().height;
+                    w["internetAvailable"] = network.internetAvailable();
+                    return jsonResponse(std::move(w));
+                }
+
+                const auto body = crow::json::load(req.body);
+                if (!body) {
+                    return jsonError(400, "JSON inválido");
+                }
+                if (body.has("width")) {
+                    double width;
+                    if (!parseDouble(body["width"], width) || width <= 0.0) {
+                        return jsonError(400, "'width' debe ser > 0");
+                    }
+                    if (!body.has("height")) {
+                        network.setFactoryDims(width, network.factory().height);
+                    } else {
+                        double height;
+                        if (!parseDouble(body["height"], height) || height <= 0.0) {
+                            return jsonError(400, "'height' debe ser > 0");
+                        }
+                        network.setFactoryDims(width, height);
+                    }
+                } else if (body.has("height")) {
+                    double height;
+                    if (!parseDouble(body["height"], height) || height <= 0.0) {
+                        return jsonError(400, "'height' debe ser > 0");
+                    }
+                    network.setFactoryDims(network.factory().width, height);
+                }
+                if (body.has("internetAvailable")) {
+                    bool available;
+                    if (!parseBool(body["internetAvailable"], available)) {
+                        return jsonError(400, "'internetAvailable' debe ser booleano");
+                    }
+                    network.setInternetAvailable(available);
+                }
+                crow::json::wvalue w;
+                w["width"] = network.factory().width;
+                w["height"] = network.factory().height;
+                w["internetAvailable"] = network.internetAvailable();
+                return jsonResponse(std::move(w));
+            });
+
+    // ---- POST /api/internet --------------------------------------------------
+    CROW_ROUTE(app, "/api/internet")
+        .methods(crow::HTTPMethod::Post)([&network](const crow::request& req) {
+            const auto body = crow::json::load(req.body);
+            if (!body) {
+                return jsonError(400, "JSON inválido");
+            }
+            if (!body.has("available")) {
+                return jsonError(400, "campo 'available' requerido");
+            }
+            bool available;
+            if (!parseBool(body["available"], available)) {
+                return jsonError(400, "'available' debe ser booleano");
+            }
+            network.setInternetAvailable(available);
+            return jsonResponse(internetToJson(network.internetAvailable()));
+        });
+
+    // ---- GET/POST /api/nodes -------------------------------------------------
+    CROW_ROUTE(app, "/api/nodes")
+        .methods(crow::HTTPMethod::Get, crow::HTTPMethod::Post)(
+            [&network](const crow::request& req) {
+                if (req.method == crow::HTTPMethod::Get) {
+                    crow::json::wvalue w = crow::json::wvalue::list();
+                    unsigned idx = 0;
+                    for (const auto& [id, node] : network.nodes()) {
+                        w[idx++] = nodeToJson(node);
+                    }
+                    return jsonResponse(std::move(w));
+                }
+
+                const auto body = crow::json::load(req.body);
+                if (!body) {
+                    return jsonError(400, "JSON inválido");
+                }
+                Node node;
+                std::string error;
+                if (!parseNodeCreate(body, node, error)) {
+                    return jsonError(400, error);
+                }
+                const AddNodeError result = network.addNode(std::move(node));
+                if (result == AddNodeError::Ok) {
+                    crow::json::wvalue created = nodeToJson(*network.find(body["id"].s()));
+                    crow::response res = jsonResponse(std::move(created), 201);
+                    return res;
+                }
+                if (result == AddNodeError::DuplicateId) {
+                    return jsonError(409, "id ya existe: '" + std::string(body["id"].s()) + "'");
+                }
+                if (result == AddNodeError::SecondServer) {
+                    return jsonError(409, "ya existe un SERVER en la simulación");
+                }
+                return jsonError(400, "datos de nodo inválidos");
+            });
+
+    // ---- GET/PUT/DELETE /api/nodes/{id} ------------------------------------
+    CROW_ROUTE(app, "/api/nodes/<string>")
+        .methods(crow::HTTPMethod::Get, crow::HTTPMethod::Put, crow::HTTPMethod::Delete)(
+            [&network](const crow::request& req, std::string id) {
+                if (req.method == crow::HTTPMethod::Get) {
+                    const Node* node = network.find(id);
+                    if (node == nullptr) {
+                        return jsonError(404, "nodo no encontrado: '" + id + "'");
+                    }
+                    return jsonResponse(nodeToJson(*node));
+                }
+                if (req.method == crow::HTTPMethod::Delete) {
+                    if (!network.removeNode(id)) {
+                        return jsonError(404, "nodo no encontrado: '" + id + "'");
+                    }
+                    return crow::response(204);
+                }
+
+                // PUT
+                const Node* existing = network.find(id);
+                if (existing == nullptr) {
+                    return jsonError(404, "nodo no encontrado: '" + id + "'");
+                }
+                const auto body = crow::json::load(req.body);
+                if (!body) {
+                    return jsonError(400, "JSON inválido");
+                }
+                if (body.has("type")) {
+                    return jsonError(400, "'type' no es mutable (borrar y recrear)");
+                }
+                if (body.has("x") || body.has("y")) {
+                    double x = existing->position.x;
+                    double y = existing->position.y;
+                    if (body.has("x") && !parseDouble(body["x"], x)) {
+                        return jsonError(400, "'x' debe ser número");
+                    }
+                    if (body.has("y") && !parseDouble(body["y"], y)) {
+                        return jsonError(400, "'y' debe ser número");
+                    }
+                    if (!network.moveNode(id, x, y)) {
+                        return jsonError(400, "posición inválida (x>=0, y>=0)");
+                    }
+                }
+                if (body.has("name")) {
+                    std::string name;
+                    if (!parseString(body["name"], name) || !network.setNodeName(id, std::move(name))) {
+                        return jsonError(400, "'name' inválido");
+                    }
+                }
+                if (body.has("range")) {
+                    std::optional<double> range;
+                    if (body["range"].t() == crow::json::type::Null) {
+                        range = std::nullopt;
+                    } else {
+                        double r;
+                        if (!parseDouble(body["range"], r)) {
+                            return jsonError(400, "'range' debe ser número o null");
+                        }
+                        range = r;
+                    }
+                    if (!network.setNodeRange(id, range)) {
+                        return jsonError(400, "'range' debe ser > 0 o null");
+                    }
+                }
+                if (body.has("status")) {
+                    const auto status = nodeStatusFromString(std::string(body["status"].s()));
+                    if (!status.has_value() || !network.setNodeStatus(id, status.value())) {
+                        return jsonError(400, "'status' inválido (ONLINE|OFFLINE)");
+                    }
+                }
+                return jsonResponse(nodeToJson(*network.find(id)));
+            });
+
+    // ---- GET /api/connections ------------------------------------------------
+    CROW_ROUTE(app, "/api/connections")
+        .methods(crow::HTTPMethod::Get)([&network]() {
+            crow::json::wvalue w = crow::json::wvalue::list();
+            unsigned idx = 0;
+            for (const Edge& e : network.connections()) {
+                w[idx++] = edgeToJson(e);
+            }
+            return jsonResponse(std::move(w));
+        });
+
+    // ---- POST /api/routes -----------------------------------------------------
+    CROW_ROUTE(app, "/api/routes")
+        .methods(crow::HTTPMethod::Post)([&network](const crow::request& req) {
+            const auto body = crow::json::load(req.body);
+            if (!body || !body.has("source")) {
+                return jsonError(400, "campo 'source' requerido");
+            }
+            std::string source;
+            if (!parseString(body["source"], source)) {
+                return jsonError(400, "'source' debe ser string");
+            }
+            const Node* src = network.find(source);
+            if (src == nullptr) {
+                return jsonError(404, "nodo no encontrado: '" + source + "'");
+            }
+            const std::string server = network.serverId();
+            const Route route = Dijkstra::shortestPath(network.buildGraph(), source, server);
+            return jsonResponse(routeToJson(route, source, server));
+        });
+}
+
+} // namespace sim
