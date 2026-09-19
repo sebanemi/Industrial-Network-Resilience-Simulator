@@ -2,9 +2,12 @@ import { useEffect, useState, memo } from "react";
 
 import type { NodePatch, NodeType } from "../models/types";
 import { useApp } from "../state/store";
+import { useUI } from "../state/ui";
+import { IconRoute, IconTrash } from "./icons";
 
 function NodeFormPanel() {
   const { state, updateNode, deleteNode, computeRoute, select } = useApp();
+  const { notify } = useUI();
   const node = state.sim?.nodes?.find((n) => n.id === state.selectedId) ?? null;
 
   const [name, setName] = useState("");
@@ -56,7 +59,8 @@ function NodeFormPanel() {
     if (status !== node.status) patch.status = status;
     setDirty(false);
     if (Object.keys(patch).length > 0) {
-      await updateNode(node.id, patch);
+      const ok = await updateNode(node.id, patch);
+      if (ok) notify("Cambios guardados", "success");
     }
   };
 
@@ -113,13 +117,13 @@ function NodeFormPanel() {
         <button className="btn primary" onClick={() => void onSave()} disabled={!dirty}>
           Guardar cambios
         </button>
-        <button className="btn" onClick={() => void computeRoute(node.id)}>
-          Calcular ruta → SERVER
+        <button className="btn has-tip" data-tip="Calcular ruta más corta al SERVER" onClick={() => { void computeRoute(node.id); notify(`Calculando ruta de ${node.id}…`, "info"); }}>
+          <IconRoute size={12} /> {node.type === "SERVER" ? "SERVER es destino" : "Calcular ruta"}
         </button>
       </div>
 
-      <button className="btn danger btn-full" onClick={() => { void deleteNode(node.id); select(null); }}>
-        Eliminar nodo
+      <button className="btn danger btn-full" onClick={() => { void deleteNode(node.id); notify(`${node.id} eliminado`, "success"); select(null); }}>
+        <IconTrash size={12} /> Eliminar nodo
       </button>
     </section>
   );

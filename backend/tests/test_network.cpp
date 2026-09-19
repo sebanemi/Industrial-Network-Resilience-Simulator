@@ -230,3 +230,66 @@ TEST("network: sin servidor, todos aislados") {
     net.addNode(makeEsp("E1", 30, 10, 20));
     CHECK_EQ(net.isolatedNodes(), (std::vector<std::string>{"E1", "S1"}));
 }
+
+TEST("network: replaceState reemplaza todo el estado") {
+    Network net;
+    net.addNode(makeServer("SERVER", 90, 10, 50));
+    net.addNode(makeSensor("SENSOR-01", 20, 15));
+
+    Shape rect;
+    rect.id = "RECT-01";
+    rect.type = ShapeType::Rect;
+    rect.x = 30; rect.y = 40; rect.width = 24; rect.height = 12;
+
+    // Reemplazamos por un estado totalmente distinto.
+    Network::FactoryDims factory = {120.0, 90.0};
+    std::vector<Node> nodes = {makeServer("SER", 60, 45, 30), makeEsp("ESP-A", 10, 10, 25)};
+    std::vector<Shape> shapes = {rect};
+    CHECK_EQ(net.replaceState(factory, false, nodes, shapes), ReplaceError::Ok);
+
+    CHECK_EQ(net.hasServer(), true);
+    CHECK_EQ(net.serverId(), "SER");
+    CHECK_EQ(net.internetAvailable(), false);
+    CHECK_NEAR(net.factory().width, 120.0, 1e-12);
+    CHECK_NEAR(net.factory().height, 90.0, 1e-12);
+    CHECK_EQ(net.nodes().size(), 2u);
+    CHECK_EQ(net.find("SER") != nullptr, true);
+    CHECK_EQ(net.find("SENSOR-01"), nullptr); // el estado anterior desaparece
+    CHECK_EQ(net.shapes().size(), 1u);
+    CHECK_EQ(net.shapes()[0].id, "RECT-01");
+}
+
+TEST("network: replaceState rechaza dos servidores") {
+    Network net;
+    std::vector<Node> nodes = {makeServer("SER-1", 10, 10, 30), makeServer("SER-2", 20, 20, 30)};
+    CHECK_EQ(net.replaceState({200.0, 150.0}, true, nodes, {}), ReplaceError::SecondServer);
+    // Estado intacto tras el rechazo.
+    CHECK_EQ(net.nodes().empty(), true);
+}
+
+TEST("network: replaceState rechaza id duplicado y no muta") {
+    Network net;
+    net.addNode(makeServer("SERVER", 50, 50, 30));
+    std::vector<Node> nodes = {makeEsp("ESP-1", 5, 5, 20), makeEsp("ESP-1", 8, 8, 20)};
+    CHECK_EQ(net.replaceState({200.0, 150.0}, true, nodes, {}), ReplaceError::InvalidNode);
+    // El estado original sigue intacto.
+    CHECK_EQ(net.serverId(), "SERVER");
+    CHECK_EQ(net.find("ESP-1"), nullptr);
+
+    // También con formas duplicadas.
+    Shape a;
+    a.id = "R1"; a.type = ShapeType::Rect; a.x = 1; a.y = 1; a.width = 10; a.height = 5;
+    Shape b = a;
+    CHECK_EQ(net.replaceState({200.0, 150.0}, true, {makeEsp("E2", 1, 1, 10)}, {a, b}),
+             ReplaceError::InvalidShape);
+    CHECK_EQ(net.find("E2"), nullptr);
+}
+
+TEST("network: replaceState rechaza planta y datos invalidos") {
+    Network net;
+    std::vector<Node> nodes = {makeEsp("OK", 5, 5, 20)};
+    CHECK_EQ(net.replaceState({0.0, 150.0}, true, nodes, {}), ReplaceError::InvalidFactory);
+    nodes[0].position = {-1, 5};
+    CHECK_EQ(net.replaceState({200.0, 150.0}, true, nodes, {}), ReplaceError::InvalidNode);
+    CHECK_EQ(net.nodes().empty(), true);
+}

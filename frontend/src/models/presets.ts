@@ -2,9 +2,9 @@ import { defaultRangeFor } from "../api/client";
 import type { NodeType } from "../models/types";
 
 const TRICOLOR: Record<NodeType, string> = {
-  SENSOR: "#4cc2ff",
+  SENSOR: "#3ba2ff",
   ESP32: "#3ecf8e",
-  SERVER: "#cf9de0",
+  SERVER: "#f59e0b",
 };
 
 export function nodeColor(type: NodeType): string {

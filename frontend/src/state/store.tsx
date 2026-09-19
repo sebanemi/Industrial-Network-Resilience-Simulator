@@ -34,6 +34,7 @@ export interface AppState {
   addShapeType: ShapeType | null;
   showGrid: boolean;
   showRanges: boolean;
+  showSnap: boolean;
 }
 
 const initialState: AppState = {
@@ -48,6 +49,7 @@ const initialState: AppState = {
   addShapeType: null,
   showGrid: true,
   showRanges: true,
+  showSnap: true,
 };
 
 export interface AppContextValue {
@@ -64,6 +66,7 @@ export interface AppContextValue {
   setRoute: (r: RouteDto | null) => void;
   toggleGrid: () => void;
   toggleRanges: () => void;
+  toggleSnap: () => void;
   nodesById: () => Map<string, NodeDto>;
   createShape: (payload: NewShapePayload) => Promise<boolean>;
   updateShape: (id: string, patch: ShapePatch) => Promise<boolean>;
@@ -203,6 +206,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     () => setState((s) => ({ ...s, showRanges: !s.showRanges })),
     [],
   );
+  const toggleSnap = useCallback(
+    () => setState((s) => ({ ...s, showSnap: !s.showSnap })),
+    [],
+  );
 
   const nodesById = useCallback(() => {
     const map = new Map<string, NodeDto>();
@@ -227,6 +234,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setRoute,
       toggleGrid,
       toggleRanges,
+      toggleSnap,
       nodesById,
       createShape,
       updateShape,
@@ -248,6 +256,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setRoute,
       toggleGrid,
       toggleRanges,
+      toggleSnap,
       nodesById,
       createShape,
       updateShape,

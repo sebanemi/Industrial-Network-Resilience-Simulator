@@ -96,3 +96,12 @@ export interface FactoryPatch {
   height?: number;
   internetAvailable?: boolean;
 }
+
+export interface StateSnapshot {
+  format?: "industrial-network-simulation";
+  version?: number;
+  factory: { width: number; height: number };
+  internet: { available: boolean };
+  nodes: NodeDto[];
+  shapes: ShapeDto[];
+}

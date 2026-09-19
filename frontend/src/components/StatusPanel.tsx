@@ -1,16 +1,21 @@
 import { useRef, memo, type ChangeEvent, type KeyboardEvent } from "react";
 
 import { useApp } from "../state/store";
+import { useUI } from "../state/ui";
 
 function StatusPanel() {
   const { state, updateFactory, setRoute, computeRoute } = useApp();
+  const { notify } = useUI();
   const { sim, route } = state;
 
   const wRef = useRef<HTMLInputElement>(null);
   const hRef = useRef<HTMLInputElement>(null);
 
   const onSelectChanged = (e: ChangeEvent<HTMLSelectElement>) => {
-    if (e.target.value) void computeRoute(e.target.value);
+    if (e.target.value) {
+      void computeRoute(e.target.value);
+      notify(`Calculando ruta de ${e.target.value}…`, "info");
+    }
   };
 
   if (!sim) {
@@ -35,7 +40,10 @@ function StatusPanel() {
     const fh = sim.factory?.height;
     if (Number.isFinite(nw) && nw > 0 && (fw === undefined || nw !== fw)) patch.width = nw;
     if (Number.isFinite(nh) && nh > 0 && (fh === undefined || nh !== fh)) patch.height = nh;
-    if (Object.keys(patch).length > 0) await updateFactory(patch);
+    if (Object.keys(patch).length > 0) {
+      const ok = await updateFactory(patch);
+      if (ok) notify("Dimensiones actualizadas", "success");
+    }
   };
 
   const onKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {

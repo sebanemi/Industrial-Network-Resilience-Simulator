@@ -18,6 +18,14 @@ enum class AddNodeError {
     InvalidData, // tipo/posición/rango inválidos
 };
 
+enum class ReplaceError {
+    Ok,
+    InvalidFactory,
+    InvalidNode,   // tipo/posición/rango inválidos o id duplicado
+    SecondServer,  // más de un SERVER en el snapshot
+    InvalidShape,  // forma inválida o id duplicado
+};
+
 // Red en vivo: inventario de la simulación.
 // Dueña del estado (planta, nodos, rangos, online/offline, Internet) y única
 // fuente de verdad para derivar el grafo. No persiste nada (ADR-005).
@@ -42,6 +50,12 @@ public:
 
     void setFactoryDims(double width, double height);
     void setInternetAvailable(bool available);
+
+    // Reemplaza TODO el estado (planta, Internet, nodos y formas) de forma
+    // atómica. Valida el lote completo antes de mutar: rechaza ids duplicados,
+    // más de un SERVER, posiciones/rangos/formas inválidas o una planta inválida.
+    ReplaceError replaceState(FactoryDims factory, bool internetAvailable,
+                              std::vector<Node> nodes, std::vector<Shape> shapes);
 
     // ---- Formas (objetos decorativos) --------------------------------
 

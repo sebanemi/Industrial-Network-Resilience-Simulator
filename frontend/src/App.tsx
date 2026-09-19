@@ -4,12 +4,17 @@ import { ErrorBoundary } from "./components/ErrorBoundary";
 import { FactoryCanvas } from "./components/FactoryCanvas";
 import NodeFormPanel from "./components/NodeFormPanel";
 import ShapeFormPanel from "./components/ShapeFormPanel";
+import StatusBar from "./components/StatusBar";
 import StatusPanel from "./components/StatusPanel";
+import Toasts from "./components/Toasts";
 import Toolbar from "./components/Toolbar";
+import { useShortcuts } from "./hooks/useShortcuts";
 import { AppProvider, useApp } from "./state/store";
+import { UIProvider } from "./state/ui";
 
 function Shell() {
   const { state, refresh } = useApp();
+  useShortcuts();
 
   useEffect(() => {
     void refresh();
@@ -40,6 +45,8 @@ function Shell() {
           <StatusPanel />
         </aside>
       </div>
+      <StatusBar />
+      <Toasts />
     </div>
   );
 }
@@ -48,7 +55,9 @@ export default function App() {
   return (
     <ErrorBoundary>
       <AppProvider>
-        <Shell />
+        <UIProvider>
+          <Shell />
+        </UIProvider>
       </AppProvider>
     </ErrorBoundary>
   );

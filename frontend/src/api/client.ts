@@ -12,6 +12,7 @@ import type {
   ShapeDto,
   ShapeType,
   SimulationDto,
+  StateSnapshot,
 } from "../models/types";
 
 export class ApiError extends Error {
@@ -73,6 +74,8 @@ async function request<T>(path: string, init?: RequestInit, retryCount = 0): Pro
 
 export const api = {
   getSimulation: () => request<SimulationDto>("/simulation"),
+  setState: (snapshot: StateSnapshot) =>
+    request<void>("/state", { method: "POST", body: JSON.stringify(snapshot) }),
   getFactory: () => request<FactoryDto>("/factory"),
   updateFactory: (patch: FactoryPatch) =>
     request<FactoryDto>("/factory", { method: "PUT", body: JSON.stringify(patch) }),

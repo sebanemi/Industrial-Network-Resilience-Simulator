@@ -1,9 +1,12 @@
 import { useEffect, useState, memo, type ChangeEvent, type KeyboardEvent } from "react";
 
 import { useApp } from "../state/store";
+import { useUI } from "../state/ui";
+import { IconCircle, IconRect, IconTrash } from "./icons";
 
 function ShapeFormPanel() {
   const { state, setAddShapeType, selectShape, updateShape, deleteShape } = useApp();
+  const { notify } = useUI();
   const shapes = state.sim?.shapes ?? [];
   const selected = shapes.find((s) => s.id === state.selectedShapeId) ?? null;
 
@@ -67,16 +70,18 @@ function ShapeFormPanel() {
 
       <div className="field-row">
         <button
-          className={state.addShapeType === "rect" ? "btn add-active" : "btn"}
+          className={state.addShapeType === "rect" ? "btn add-active has-tip" : "btn has-tip"}
+          data-tip="Agregar rectángulo (pared, máquina)"
           onClick={() => setAddShapeType(state.addShapeType === "rect" ? null : "rect")}
         >
-          + Rectángulo
+          <IconRect size={13} /> Rectángulo
         </button>
         <button
-          className={state.addShapeType === "circle" ? "btn add-active" : "btn"}
+          className={state.addShapeType === "circle" ? "btn add-active has-tip" : "btn has-tip"}
+          data-tip="Agregar círculo"
           onClick={() => setAddShapeType(state.addShapeType === "circle" ? null : "circle")}
         >
-          + Círculo
+          <IconCircle size={13} /> Círculo
         </button>
       </div>
 
@@ -135,8 +140,8 @@ function ShapeFormPanel() {
             </div>
           )}
           <div className="field-row">
-            <button className="btn" onClick={() => void apply()}>Aplicar</button>
-            <button className="btn danger" onClick={() => void deleteShape(selected.id)}>Eliminar</button>
+            <button className="btn" onClick={() => { void apply(); notify("Cambios aplicados", "success"); }}>Aplicar</button>
+            <button className="btn danger" onClick={() => { void deleteShape(selected.id); notify(`${selected.id} eliminado`, "success"); }}><IconTrash size={12} /> Eliminar</button>
           </div>
           <button className="btn ghost" onClick={() => selectShape(null)}>Quitar selección</button>
         </>

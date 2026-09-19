@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useRef, useState, useCallback, type MouseEvent, type PointerEvent } from "react";
 
-import { gridLines, fitView, screenToWorld, type Point, type Size, type ViewBox } from "../canvas/geometry";
+import { gridLines, fitView, screenToWorld, metersPerPixel, snapCoord, type Point, type Size, type ViewBox } from "../canvas/geometry";
 import { usePanZoom } from "../canvas/usePanZoom";
 import { nextIdFor, nextShapeId } from "../api/client";
-import { nodeColor, nodeRadius, round2, defaultRangeHint } from "../models/presets";
+import { nodeColor, nodeRadius, round2, defaultRangeHint, nodeLabel } from "../models/presets";
 import type { NodeDto, ShapeDto } from "../models/types";
 import { useApp } from "../state/store";
+import { useUI } from "../state/ui";
+import { IconClose, IconEsp32, IconGrid, IconRanges, IconSensor, IconServer, IconSnap } from "./icons";
 
 interface Dragged {
   id: string;
@@ -43,51 +45,51 @@ function deriveEdges(nodes: NodeDto[], positionOf: (node: NodeDto) => Point): De
   return edges;
 }
 
-/** Glifo inline (sin <use>/symbol) para que siempre se renderice. */
-function NodeGlyph({ type, x, y, size, color }: { type: NodeDto["type"]; x: number; y: number; size: number; color: string }) {
+/** Símbolo de nodo (auto-contenido, sin <use>/symbol).
+ *  SENSOR es una diana circular; ESP32 una placa de desarrollo (chip + pines);
+ *  SERVER es una PC (monitor con base). `color` es el color del tipo (o gris si offline)
+ *  y `ink` el detalle en contraste para que se lea sobre el fondo oscuro. */
+function NodeGlyph({
+  type,
+  x,
+  y,
+  size,
+  color,
+  ink,
+}: {
+  type: NodeDto["type"];
+  x: number;
+  y: number;
+  size: number;
+  color: string;
+  ink: string;
+}) {
   const scale = size / 24;
   return (
-    <g
-      transform={`translate(${x} ${y}) scale(${scale}) translate(-12, -12)`}
-      fill="none"
-      stroke={color}
-      strokeWidth={2}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
+    <g transform={`translate(${x} ${y}) scale(${scale}) translate(-12, -12)`}>
       {type === "SENSOR" && (
-        <>
-          <circle cx="12" cy="12" r="10" />
-          <circle cx="12" cy="12" r="3" fill={color} stroke="none" />
-          <line x1="12" y1="2" x2="12" y2="5" />
-          <line x1="12" y1="19" x2="12" y2="22" />
-          <line x1="2" y1="12" x2="5" y2="12" />
-          <line x1="19" y1="12" x2="22" y2="12" />
-        </>
+        <g>
+          <circle cx="12" cy="12" r="9.5" fill={color} />
+          <circle cx="12" cy="12" r="9.5" fill="none" stroke={ink} strokeWidth={2} />
+          <circle cx="12" cy="12" r="3.2" fill={ink} stroke="none" />
+          <path d="M12 4.5v2.3M12 17.2v2.3M4.5 12h2.3M17.2 12h2.3" stroke={ink} strokeWidth={2} strokeLinecap="round" fill="none" />
+        </g>
       )}
       {type === "ESP32" && (
-        <>
-          <rect x="4" y="6" width="16" height="12" rx="2" />
-          <line x1="4" y1="9" x2="1" y2="9" />
-          <line x1="4" y1="15" x2="1" y2="15" />
-          <line x1="20" y1="9" x2="23" y2="9" />
-          <line x1="20" y1="15" x2="23" y2="15" />
-          <path d="M16 16.5 A 4.5 4.5 0 0 1 12 20.5" />
-          <path d="M16 12.5 A 7 7 0 0 1 12 20.5" />
-          <path d="M16 8.5 A 9.5 9.5 0 0 1 12 20.5" />
-          <circle cx="12" cy="12" r="1.5" fill={color} stroke="none" />
-        </>
+        <g>
+          <rect x="3.5" y="6" width="17" height="12" rx="2" fill={color} />
+          <rect x="9.5" y="9.5" width="5" height="5" rx="0.9" fill="none" stroke={ink} strokeWidth={1.6} />
+          <path d="M6 6V3M12 6V3M18 6V3" stroke={ink} strokeWidth={1.6} strokeLinecap="round" fill="none" />
+          <path d="M6 18v3M12 18v3M18 18v3" stroke={ink} strokeWidth={1.6} strokeLinecap="round" fill="none" />
+          <circle cx="12" cy="12" r="0.6" fill={ink} stroke="none" />
+        </g>
       )}
       {type === "SERVER" && (
-        <>
-          <rect x="3" y="3" width="18" height="18" rx="1.5" />
-          <line x1="5" y1="8" x2="19" y2="8" />
-          <line x1="5" y1="12" x2="19" y2="12" />
-          <line x1="5" y1="16" x2="19" y2="16" />
-          <circle cx="19.5" cy="6" r="1.2" fill="#34d399" stroke="none" />
-          <circle cx="19.5" cy="12" r="1.2" fill="#34d399" stroke="none" />
-          <circle cx="19.5" cy="18" r="1.2" fill="#cbd5e1" stroke="none" />
-        </>
+        <g>
+          <rect x="4" y="3.5" width="16" height="10.5" rx="1.5" fill={color} />
+          <rect x="7" y="6" width="10" height="5.5" rx="0.6" fill="none" stroke={ink} strokeWidth={1.4} />
+          <path d="M12 14v2.2M8.5 16.2h7" stroke={color} strokeWidth={1.8} strokeLinecap="round" fill="none" />
+        </g>
       )}
     </g>
   );
@@ -103,8 +105,12 @@ export function FactoryCanvas() {
   const [vb, setVb] = useState<ViewBox | null>(null);
   const [livePos, setLivePos] = useState<ReadonlyMap<string, Point>>(new Map());
   const [liveShapePos, setLiveShapePos] = useState<ReadonlyMap<string, Point>>(new Map());
+  const [guides, setGuides] = useState<{ vx?: number; hy?: number }>({});
+  const [onboardVisible, setOnboardVisible] = useState(true);
   const draggedRef = useRef<Dragged | null>(null);
   const dragShapeRef = useRef<Dragged | null>(null);
+  const baselineMppRef = useRef(0);
+  const { setCursor, setScaleLabel, notify } = useUI();
 
   // Observa el tamaño del contenedor.
   useEffect(() => {
@@ -133,16 +139,45 @@ export function FactoryCanvas() {
     if (!sim) return;
     const dimensionsChanged = prevDimsKeyRef.current !== dimsKey;
     prevDimsKeyRef.current = dimsKey;
+    const fit = fitView({ width: sim.factory.width, height: sim.factory.height }, viewport);
+    if (dimensionsChanged) {
+      baselineMppRef.current = fit.w / Math.max(viewport.width, 1);
+    }
     // Centrar si no hay vista previa (recarga de página) o cambiaron las dimensiones
     setVb((prev) => {
       if (prev == null || dimensionsChanged) {
-        return fitView({ width: sim.factory.width, height: sim.factory.height }, viewport);
+        return fit;
       }
       return prev;
     });
   }, [dimsKey, viewport]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Escala actual relativa al encuadre inicial (para la barra de estado)
+  useEffect(() => {
+    if (vb == null || viewport.width === 0) {
+      setScaleLabel(null);
+      return;
+    }
+    const mpp = vb.w / Math.max(viewport.width, 1);
+    const base = baselineMppRef.current > 0 ? baselineMppRef.current : mpp;
+    const pct = Math.round((base / mpp) * 100);
+    setScaleLabel(`1 m ≈ ${(1 / mpp).toFixed(1)} px · ${pct}%`);
+  }, [vb, viewport, setScaleLabel]);
+
   const pan = usePanZoom(vb ?? fitView({ width: 100, height: 60 }, viewport), setVb, svgRef);
+
+  const svgHandlers = {
+    ...pan,
+    onPointerMove: (e: PointerEvent<SVGSVGElement>) => {
+      pan.onPointerMove(e);
+      const rect = svgRef.current?.getBoundingClientRect();
+      if (rect && vb) setCursor(screenToWorld(e.clientX, e.clientY, rect, vb));
+    },
+    onPointerLeave: () => {
+      pan.onPointerLeave();
+      setCursor(null);
+    },
+  };
 
   const nodesById = useMemo(() => new Map(sim?.nodes.map((n) => [n.id, n]) ?? []), [sim?.nodes]);
   const routeSet = useMemo(() => new Set(state.route?.path ?? []), [state.route]);
@@ -157,13 +192,9 @@ export function FactoryCanvas() {
     return pairs;
   }, [state.route]);
 
-  if (!sim) {
-    return <div className="canvas-empty">Cargando simulación…</div>;
-  }
-
-  const factory = sim.factory ?? { width: 100, height: 60 };
-  const nodes = sim.nodes ?? [];
-  const shapes = sim.shapes ?? [];
+  const factory = sim?.factory ?? { width: 100, height: 60 };
+  const nodes = sim?.nodes ?? [];
+  const shapes = sim?.shapes ?? [];
   const grid = gridLines({ width: factory.width, height: factory.height });
   const additive = state.addType != null;
   const shapeAdditive = state.addShapeType != null;
@@ -176,8 +207,12 @@ export function FactoryCanvas() {
     const rect = svgRef.current?.getBoundingClientRect();
     if (!rect || !vb) return;
     const world = screenToWorld(e.clientX, e.clientY, rect, vb);
-    const x = Math.max(0, Math.min(factory.width, world.x));
-    const y = Math.max(0, Math.min(factory.height, world.y));
+    let x = Math.max(0, Math.min(factory.width, world.x));
+    let y = Math.max(0, Math.min(factory.height, world.y));
+    if (state.showSnap) {
+      x = Math.max(0, Math.min(factory.width, snapCoord(x)));
+      y = Math.max(0, Math.min(factory.height, snapCoord(y)));
+    }
 
     if (state.addShapeType != null) {
       const id = nextShapeId(state.addShapeType, shapes);
@@ -189,17 +224,20 @@ export function FactoryCanvas() {
         y: round2(y),
         width: isRect ? 24 : 20,
         height: isRect ? 12 : 20,
-      });
+      }).then((ok) => ok && notify(`${id} creado en el plano`, "success"));
       setAddShapeType(null);
       return;
     }
 
     if (state.addType == null) return;
-    const id = nextIdFor(state.addType, nodes);
+    const type = state.addType;
+    const id = nextIdFor(type, nodes);
     if (!id) return; // por ejemplo, ya existe un SERVER
-    void addNode({ id, type: state.addType, x: round2(x), y: round2(y), range: defaultRangeHint(state.addType) });
+    void addNode({ id, type, x: round2(x), y: round2(y), range: defaultRangeHint(type) }).then(
+      (ok) => ok && notify(`${id} (${nodeLabel(type)}) agregado`, "success"),
+    );
     setAddType(null);
-  }, [vb, factory, state.addShapeType, state.addType, shapes, nodes, createShape, setAddShapeType, addNode, setAddType]);
+  }, [vb, factory, state.addShapeType, state.addType, state.showSnap, shapes, nodes, createShape, setAddShapeType, addNode, setAddType, notify]);
 
   const onNodePointerDown = useCallback((e: PointerEvent, node: NodeDto) => {
     e.stopPropagation();
@@ -223,17 +261,33 @@ export function FactoryCanvas() {
     if (dx === 0 && dy === 0) return;
     drag.changed = true;
     const prev = positionOf(node);
-    const next = {
+    let next = {
       x: Math.max(0, Math.min(factory.width, prev.x + dx)),
       y: Math.max(0, Math.min(factory.height, prev.y + dy)),
     };
+    if (state.showSnap) {
+      next = { x: snapCoord(next.x), y: snapCoord(next.y) };
+    }
+    // Guías de alineación con otros nodos (estilo CAD)
+    const mpp = metersPerPixel(vb, rect.width);
+    const tol = 8 * mpp;
+    let vx: number | undefined;
+    let hy: number | undefined;
+    for (const other of nodes) {
+      if (other.id === node.id) continue;
+      const po = positionOf(other);
+      if (Math.abs(po.x - next.x) <= tol) vx = next.x;
+      if (Math.abs(po.y - next.y) <= tol) hy = next.y;
+    }
+    setGuides({ vx, hy });
     setLivePos((map) => new Map(map).set(node.id, next));
-  }, [vb, factory, positionOf]);
+  }, [vb, factory, positionOf, state.showSnap, nodes]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const onNodePointerUp = useCallback((_e: PointerEvent, node: NodeDto) => {
     const drag = draggedRef.current;
     if (!drag || drag.id !== node.id) return;
     draggedRef.current = null;
+    setGuides({});
     const pos = livePos.get(node.id);
     if (drag.changed && pos) {
       void updateNode(node.id, { x: round2(pos.x), y: round2(pos.y) });
@@ -263,12 +317,15 @@ export function FactoryCanvas() {
     if (dx === 0 && dy === 0) return;
     drag.changed = true;
     const prev = shapePositionOf(shape);
-    const next = {
+    let next = {
       x: Math.max(0, Math.min(factory.width, prev.x + dx)),
       y: Math.max(0, Math.min(factory.height, prev.y + dy)),
     };
+    if (state.showSnap) {
+      next = { x: snapCoord(next.x), y: snapCoord(next.y) };
+    }
     setLiveShapePos((map) => new Map(map).set(shape.id, next));
-  }, [vb, factory, shapePositionOf]);
+  }, [vb, factory, shapePositionOf, state.showSnap]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const onShapePointerUp = useCallback((_e: PointerEvent, shape: ShapeDto) => {
     const drag = dragShapeRef.current;
@@ -288,10 +345,15 @@ export function FactoryCanvas() {
 
   const onNodePointerCancel = useCallback(() => {
     draggedRef.current = null;
+    setGuides({});
     setLivePos(new Map());
   }, []);
 
   const labelVisible = (vb?.w ?? 0) / (viewport.width || 1) < 3;
+
+  if (!sim) {
+    return <div className="canvas-empty">Cargando simulación…</div>;
+  }
 
   return (
     <div className="canvas-frame" ref={wrapRef}>
@@ -301,11 +363,11 @@ export function FactoryCanvas() {
         viewBox={vb ? `${vb.x0} ${vb.y0} ${vb.w} ${vb.h}` : "0 0 1 1"}
         preserveAspectRatio="xMidYMid meet"
         onClick={onBackgroundClick}
-        {...pan}
+        {...svgHandlers}
       >
         <defs>
           <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
-            <path d="M 0 0 L 10 5 L 0 10 z" fill="#ffb74d" />
+            <path d="M 0 0 L 10 5 L 0 10 z" fill="#3ba2ff" />
           </marker>
         </defs>
 
@@ -409,6 +471,18 @@ export function FactoryCanvas() {
           })}
         </g>
 
+        {/* Guías de alineación (magnet) */}
+        {(guides.vx != null || guides.hy != null) && (
+          <g className="guides">
+            {guides.vx != null && (
+              <line x1={guides.vx} y1={0} x2={guides.vx} y2={factory.height} className="guide guide-v" />
+            )}
+            {guides.hy != null && (
+              <line x1={0} y1={guides.hy} x2={factory.width} y2={guides.hy} className="guide guide-h" />
+            )}
+          </g>
+        )}
+
         {/* Rangos de comunicación */}
         {state.showRanges &&
           nodes.map((node) => {
@@ -439,8 +513,8 @@ export function FactoryCanvas() {
           const selected = state.selectedId === node.id;
           const isolated = node.type !== "SERVER" && !node.reachable && node.status === "ONLINE";
           const inRoute = routeSet.has(node.id);
-          const color = nodeColor(node.type);
-          const glyphColor = node.status === "OFFLINE" ? "#64748b" : color;
+          const color = node.status === "OFFLINE" ? "#5b6b7b" : nodeColor(node.type);
+          const ink = node.status === "OFFLINE" ? "#9aa4b2" : "#0e1013";
           const r = nodeRadius(node.type);
           const iconSize = r * 2.2;
           return (
@@ -455,8 +529,7 @@ export function FactoryCanvas() {
               onClick={(e) => e.stopPropagation()}
             >
               {inRoute && <circle cx={p.x} cy={p.y} r={r + 2} className="node-glow" />}
-              <circle cx={p.x} cy={p.y} r={r} fill={color} className="node-body" />
-              <NodeGlyph type={node.type} x={p.x} y={p.y} size={iconSize} color={glyphColor} />
+              <NodeGlyph type={node.type} x={p.x} y={p.y} size={iconSize} color={color} ink={ink} />
               {isolated && <circle cx={p.x} cy={p.y} r={r + 1.6} className="node-isolated" />}
               {selected && <circle cx={p.x} cy={p.y} r={r + 1.6} className="node-selected" />}
             </g>
@@ -472,6 +545,43 @@ export function FactoryCanvas() {
       {shapeAdditive && (
         <div className="add-hint">
           Modo agregar {state.addShapeType === "rect" ? "rectángulo" : "círculo"}. Haz clic en el plano.
+        </div>
+      )}
+
+      {onboardVisible && nodes.length === 0 && shapes.length === 0 && (
+        <div className="onboard">
+          <button
+            className="btn icon has-tip"
+            data-tip="Ocultar guía"
+            onClick={() => setOnboardVisible(false)}
+            aria-label="Ocultar guía"
+          >
+            <IconClose size={13} />
+          </button>
+          <h2>Plano vacío</h2>
+          <p>Modelá la red de la fábrica en 3 pasos:</p>
+          <ol className="onboard-steps">
+            <li>Agregá el <strong>SERVER</strong> central.</li>
+            <li>Distribuí sensores y nodos ESP32 por el plano.</li>
+            <li>Calculá rutas al servidor y simulá caídas de Internet.</li>
+          </ol>
+          <div className="onboard-actions">
+            <button className="btn has-tip" data-tip="Agregar nodo servidor" onClick={() => setAddType("SERVER")}>
+              <IconServer size={13} /> Agregar SERVER
+            </button>
+            <button className="btn has-tip" data-tip="Agregar sensor" onClick={() => setAddType("SENSOR")}>
+              <IconSensor size={13} /> Sensor
+            </button>
+            <button className="btn has-tip" data-tip="Agregar nodo ESP32" onClick={() => setAddType("ESP32")}>
+              <IconEsp32 size={13} /> ESP32
+            </button>
+          </div>
+          <div className="onboard-shortcuts">
+            <span><IconGrid size={12} /> G grilla</span>
+            <span><IconRanges size={12} /> R rangos</span>
+            <span><IconSnap size={12} /> S magnet</span>
+            <span><IconClose size={12} /> Esc cancelar</span>
+          </div>
         </div>
       )}
     </div>

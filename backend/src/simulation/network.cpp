@@ -99,6 +99,57 @@ void Network::setFactoryDims(double width, double height) {
 
 void Network::setInternetAvailable(bool available) { internet_available_ = available; }
 
+ReplaceError Network::replaceState(FactoryDims factory, bool internetAvailable,
+                                   std::vector<Node> nodes, std::vector<Shape> shapes) {
+    // Validar la planta.
+    if (!finitePositive(factory.width) || !finitePositive(factory.height)) {
+        return ReplaceError::InvalidFactory;
+    }
+
+    // Validar el lote de nodos: ids únicos, un solo SERVER, datos válidos.
+    std::unordered_map<std::string, Node> next_nodes;
+    next_nodes.reserve(nodes.size());
+    std::optional<std::string> next_server;
+    for (Node& node : nodes) {
+        if (!validPosition(node.position.x, node.position.y) || !validRange(node.range)) {
+            return ReplaceError::InvalidNode;
+        }
+        if (next_nodes.contains(node.id)) {
+            return ReplaceError::InvalidNode; // id duplicado
+        }
+        if (node.type == NodeType::Server) {
+            if (next_server.has_value()) {
+                return ReplaceError::SecondServer;
+            }
+            next_server = node.id;
+        }
+        next_nodes.emplace(node.id, std::move(node));
+    }
+
+    // Validar las formas: ids únicos y datos válidos.
+    std::vector<Shape> next_shapes;
+    next_shapes.reserve(shapes.size());
+    for (Shape& shape : shapes) {
+        if (!validShape(shape)) {
+            return ReplaceError::InvalidShape;
+        }
+        for (const Shape& existing : next_shapes) {
+            if (existing.id == shape.id) {
+                return ReplaceError::InvalidShape;
+            }
+        }
+        next_shapes.push_back(std::move(shape));
+    }
+
+    // Lote válido → reemplazar atómicamente.
+    factory_ = factory;
+    internet_available_ = internetAvailable;
+    nodes_ = std::move(next_nodes);
+    server_id_ = std::move(next_server);
+    shapes_ = std::move(next_shapes);
+    return ReplaceError::Ok;
+}
+
 // ---- Formas (objetos decorativos) ------------------------------------------
 
 bool Network::addShape(const Shape& shape) {

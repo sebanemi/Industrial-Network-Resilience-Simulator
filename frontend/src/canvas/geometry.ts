@@ -19,8 +19,8 @@ export interface Size {
 }
 
 export const KM_PER_PX_DEFAULT = 0.3; // metros por píxel al hacer fit (referencia)
-export const SPACING_M = 50; // menor espaciado de grid (metros)
-export const MAJOR_EVERY = 1; // una línea mayor cada espacio
+export const SPACING_M = 5; // espaciado de la grilla menor (metros)
+export const MAJOR_EVERY = 10; // una línea mayor cada N menores (cada 50 m)
 export const MARGIN_M = 30; // margen alrededor de la planta al encuadrar
 
 /** Encuadra la planta completa dentro del viewport (svg en px). */
@@ -64,6 +64,11 @@ export function screenToWorld(clientX: number, clientY: number, rect: DOMRect, v
 /** Metros por píxel actuales (para convertir arrastres en metros). */
 export function metersPerPixel(vb: ViewBox, rectWidth: number): number {
   return vb.w / rectWidth;
+}
+
+/** Redondea una coordenada al paso de cuadrícula (magnet). */
+export function snapCoord(v: number, step: number = 5): number {
+  return Math.round(v / step) * step;
 }
 
 export interface GridLines {

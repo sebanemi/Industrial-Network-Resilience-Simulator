@@ -283,6 +283,92 @@ void registerApiRoutes(crow::SimpleApp& app, Network& network) {
             }
         });
 
+    // ---- POST /api/state (importar snapshot completo) ------------------------
+    CROW_ROUTE(app, "/api/state")
+        .methods(crow::HTTPMethod::Post)([&network](const crow::request& req) {
+            try {
+                const auto body = crow::json::load(req.body);
+                if (!body) {
+                    return jsonError(400, "JSON inválido");
+                }
+
+                // Planta (obligatoria).
+                if (!body.has("factory") || body["factory"].t() != crow::json::type::Object) {
+                    return jsonError(400, "campo 'factory' requerido (objeto)");
+                }
+                double width, height;
+                if (!parseDouble(body["factory"]["width"], width) ||
+                    !parseDouble(body["factory"]["height"], height)) {
+                    return jsonError(400, "'factory.width'/'factory.height' deben ser números");
+                }
+                Network::FactoryDims factory = {width, height};
+
+                // Internet (opcional).
+                bool available = true;
+                if (body.has("internet") && body["internet"].t() == crow::json::type::Object &&
+                    body["internet"].has("available")) {
+                    if (!parseBool(body["internet"]["available"], available)) {
+                        return jsonError(400, "'internet.available' debe ser booleano");
+                    }
+                }
+
+                // Nodos (obligatorio: lista, puede estar vacía).
+                if (!body.has("nodes") || body["nodes"].t() != crow::json::type::List) {
+                    return jsonError(400, "campo 'nodes' requerido (lista)");
+                }
+                std::vector<Node> nodes;
+                {
+                    const auto& arr = body["nodes"];
+                    nodes.reserve(arr.size());
+                    for (size_t i = 0; i < arr.size(); ++i) {
+                        Node node;
+                        std::string error;
+                        if (!parseNodeCreate(arr[i], node, error)) {
+                            return jsonError(400, "nodo #" + std::to_string(i) + ": " + error);
+                        }
+                        nodes.push_back(std::move(node));
+                    }
+                }
+
+                // Formas (opcional).
+                std::vector<Shape> shapes;
+                if (body.has("shapes")) {
+                    if (body["shapes"].t() != crow::json::type::List) {
+                        return jsonError(400, "'shapes' debe ser una lista");
+                    }
+                    const auto& arr = body["shapes"];
+                    shapes.reserve(arr.size());
+                    for (size_t i = 0; i < arr.size(); ++i) {
+                        Shape shape;
+                        std::string error;
+                        if (!parseShape(arr[i], shape, error)) {
+                            return jsonError(400, "forma #" + std::to_string(i) + ": " + error);
+                        }
+                        shapes.push_back(std::move(shape));
+                    }
+                }
+
+                const ReplaceError result =
+                    network.replaceState(factory, available, std::move(nodes), std::move(shapes));
+                switch (result) {
+                    case ReplaceError::Ok:
+                        return crow::response(204);
+                    case ReplaceError::InvalidFactory:
+                        return jsonError(400, "'factory.width'/'factory.height' deben ser > 0");
+                    case ReplaceError::InvalidNode:
+                        return jsonError(400, "nodo inválido (posicion/rango/id duplicado)");
+                    case ReplaceError::SecondServer:
+                        return jsonError(409, "el snapshot contiene más de un SERVER");
+                    case ReplaceError::InvalidShape:
+                        return jsonError(400, "forma inválida (datos o id duplicado)");
+                }
+                return jsonError(500, "Error interno del servidor");
+            } catch (const std::exception& e) {
+                CROW_LOG_ERROR << "Error en /api/state: " << e.what();
+                return jsonError(500, "Error interno del servidor");
+            }
+        });
+
     // ---- GET/PUT /api/factory ------------------------------------------------
     CROW_ROUTE(app, "/api/factory")
         .methods(crow::HTTPMethod::Get, crow::HTTPMethod::Put)(
