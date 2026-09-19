@@ -12,10 +12,13 @@ import { api } from "../api/client";
 import type {
   FactoryPatch,
   NewNodePayload,
+  NewShapePayload,
   NodeDto,
   NodePatch,
   NodeType,
   RouteDto,
+  ShapePatch,
+  ShapeType,
   SimulationDto,
 } from "../models/types";
 
@@ -24,8 +27,10 @@ export interface AppState {
   loading: boolean;
   error: string | null;
   selectedId: string | null;
+  selectedShapeId: string | null;
   route: RouteDto | null;
   addType: NodeType | null;
+  addShapeType: ShapeType | null;
   showGrid: boolean;
   showRanges: boolean;
 }
@@ -35,8 +40,10 @@ const initialState: AppState = {
   loading: true,
   error: null,
   selectedId: null,
+  selectedShapeId: null,
   route: null,
   addType: null,
+  addShapeType: null,
   showGrid: true,
   showRanges: true,
 };
@@ -56,6 +63,11 @@ export interface AppContextValue {
   toggleGrid: () => void;
   toggleRanges: () => void;
   nodesById: () => Map<string, NodeDto>;
+  createShape: (payload: NewShapePayload) => Promise<boolean>;
+  updateShape: (id: string, patch: ShapePatch) => Promise<boolean>;
+  deleteShape: (id: string) => Promise<boolean>;
+  selectShape: (id: string | null) => void;
+  setAddShapeType: (t: ShapeType | null) => void;
 }
 
 const AppContext = createContext<AppContextValue | null>(null);
@@ -113,6 +125,26 @@ export function AppProvider({ children }: { children: ReactNode }) {
     [runMutation],
   );
 
+  const createShape = useCallback(
+    (payload: NewShapePayload) =>
+      runMutation(() => api.createShape(payload).then(() => undefined)),
+    [runMutation],
+  );
+
+  const updateShape = useCallback(
+    async (id: string, patch: ShapePatch): Promise<boolean> => {
+      const existing = (stateRef.current.sim?.shapes ?? []).find((s) => s.id === id);
+      if (!existing) return false;
+      return runMutation(() => api.updateShape(id, { ...existing, ...patch }));
+    },
+    [runMutation],
+  );
+
+  const deleteShape = useCallback(
+    (id: string) => runMutation(() => api.deleteShape(id)),
+    [runMutation],
+  );
+
   const updateFactory = useCallback(
     (patch: FactoryPatch) => runMutation(() => api.updateFactory(patch)),
     [runMutation],
@@ -138,11 +170,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const select = useCallback((id: string | null) => {
-    setState((s) => ({ ...s, selectedId: id, addType: null }));
+    setState((s) => ({ ...s, selectedId: id, addType: null, selectedShapeId: null, addShapeType: null }));
   }, []);
 
   const setAddType = useCallback((t: NodeType | null) => {
-    setState((s) => ({ ...s, addType: t, selectedId: null }));
+    setState((s) => ({ ...s, addType: t, selectedId: null, selectedShapeId: null, addShapeType: null }));
+  }, []);
+
+  const selectShape = useCallback((id: string | null) => {
+    setState((s) => ({ ...s, selectedShapeId: id, addShapeType: null, selectedId: null, addType: null }));
+  }, []);
+
+  const setAddShapeType = useCallback((t: ShapeType | null) => {
+    setState((s) => ({ ...s, addShapeType: t, addType: null, selectedId: null, selectedShapeId: null }));
   }, []);
 
   const setRoute = useCallback((r: RouteDto | null) => {
@@ -182,6 +222,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
       toggleGrid,
       toggleRanges,
       nodesById,
+      createShape,
+      updateShape,
+      deleteShape,
+      selectShape,
+      setAddShapeType,
     }),
     [
       state,
@@ -198,6 +243,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
       toggleGrid,
       toggleRanges,
       nodesById,
+      createShape,
+      updateShape,
+      deleteShape,
+      selectShape,
+      setAddShapeType,
     ],
   );
 

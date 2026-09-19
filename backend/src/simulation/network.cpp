@@ -99,6 +99,44 @@ void Network::setFactoryDims(double width, double height) {
 
 void Network::setInternetAvailable(bool available) { internet_available_ = available; }
 
+// ---- Formas (objetos decorativos) ------------------------------------------
+
+bool Network::addShape(const Shape& shape) {
+    if (!validShape(shape)) {
+        return false;
+    }
+    for (const Shape& s : shapes_) {
+        if (s.id == shape.id) {
+            return false;
+        }
+    }
+    shapes_.push_back(shape);
+    return true;
+}
+
+bool Network::updateShape(const Shape& shape) {
+    if (!validShape(shape)) {
+        return false;
+    }
+    for (Shape& s : shapes_) {
+        if (s.id == shape.id) {
+            s = shape;
+            return true;
+        }
+    }
+    return false;
+}
+
+bool Network::removeShape(const std::string& id) {
+    for (auto it = shapes_.begin(); it != shapes_.end(); ++it) {
+        if (it->id == id) {
+            shapes_.erase(it);
+            return true;
+        }
+    }
+    return false;
+}
+
 // ---- Consultas ------------------------------------------------------------
 
 const Node* Network::find(const std::string& id) const {
@@ -136,6 +174,10 @@ bool Network::validRange(std::optional<double> range) {
 
 bool Network::validPosition(double x, double y) {
     return std::isfinite(x) && std::isfinite(y) && x >= 0.0 && y >= 0.0;
+}
+
+bool Network::validShape(const Shape& shape) {
+    return validPosition(shape.x, shape.y) && finitePositive(shape.width) && finitePositive(shape.height);
 }
 
 Graph Network::buildGraph() const {

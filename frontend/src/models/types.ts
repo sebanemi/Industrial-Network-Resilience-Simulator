@@ -1,5 +1,6 @@
 export type NodeType = "SENSOR" | "ESP32" | "SERVER";
 export type NodeStatus = "ONLINE" | "OFFLINE";
+export type ShapeType = "rect" | "circle";
 
 export interface NodeDto {
   id: string;
@@ -37,12 +38,22 @@ export interface FactoryDto {
   internetAvailable: boolean;
 }
 
+export interface ShapeDto {
+  id: string;
+  type: ShapeType;
+  x: number; // centro (m)
+  y: number; // centro (m)
+  width: number; // ancho (m); para circle es el diámetro
+  height: number; // alto (m)
+}
+
 export interface SimulationDto {
   factory: { width: number; height: number };
   internet: InternetDto;
   nodes: NodeDto[];
   connections: ConnectionDto[];
   isolated: string[];
+  shapes: ShapeDto[];
 }
 
 export interface NewNodePayload {
@@ -53,6 +64,23 @@ export interface NewNodePayload {
   name?: string;
   range?: number | null;
   status?: NodeStatus;
+}
+
+export interface NewShapePayload {
+  id: string;
+  type: ShapeType;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+export interface ShapePatch {
+  type?: ShapeType;
+  x?: number;
+  y?: number;
+  width?: number;
+  height?: number;
 }
 
 export interface NodePatch {

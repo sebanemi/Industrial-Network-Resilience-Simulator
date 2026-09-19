@@ -7,6 +7,7 @@
 
 #include "graph/graph.hpp"
 #include "models/node.hpp"
+#include "models/shape.hpp"
 
 namespace sim {
 
@@ -42,6 +43,13 @@ public:
     void setFactoryDims(double width, double height);
     void setInternetAvailable(bool available);
 
+    // ---- Formas (objetos decorativos) --------------------------------
+
+    bool addShape(const Shape& shape);   // false si id duplicado o datos inválidos
+    bool updateShape(const Shape& shape);
+    bool removeShape(const std::string& id);
+    const std::vector<Shape>& shapes() const { return shapes_; }
+
     // ---- Consultas ---------------------------------------------------
 
     const std::unordered_map<std::string, Node>& nodes() const { return nodes_; }
@@ -67,10 +75,12 @@ public:
     static bool canCommunicate(const Node& a, const Node& b);
     static bool validRange(std::optional<double> range);
     static bool validPosition(double x, double y);
+    static bool validShape(const Shape& shape);
 
 private:
     std::unordered_map<std::string, Node> nodes_;
     std::optional<std::string> server_id_;
+    std::vector<Shape> shapes_;
     FactoryDims factory_;
     bool internet_available_ = true;
 };

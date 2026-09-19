@@ -1,4 +1,4 @@
-import { useState, type ChangeEvent } from "react";
+import { useRef, type ChangeEvent, type KeyboardEvent } from "react";
 
 import { useApp } from "../state/store";
 
@@ -6,8 +6,8 @@ export function StatusPanel() {
   const { state, updateFactory, setRoute, computeRoute } = useApp();
   const { sim, route } = state;
 
-  const [w, setW] = useState("");
-  const [h, setH] = useState("");
+  const wRef = useRef<HTMLInputElement>(null);
+  const hRef = useRef<HTMLInputElement>(null);
 
   const onSelectChanged = (e: ChangeEvent<HTMLSelectElement>) => {
     if (e.target.value) void computeRoute(e.target.value);
@@ -28,14 +28,18 @@ export function StatusPanel() {
   const sources = nodes.filter((n) => n.type === "SENSOR" || n.type === "ESP32");
 
   const applyDims = async () => {
-    const nw = Number(w);
-    const nh = Number(h);
+    const nw = Number(wRef.current?.value);
+    const nh = Number(hRef.current?.value);
     const patch: { width?: number; height?: number } = {};
     const fw = sim.factory?.width;
     const fh = sim.factory?.height;
     if (Number.isFinite(nw) && nw > 0 && (fw === undefined || nw !== fw)) patch.width = nw;
     if (Number.isFinite(nh) && nh > 0 && (fh === undefined || nh !== fh)) patch.height = nh;
     if (Object.keys(patch).length > 0) await updateFactory(patch);
+  };
+
+  const onKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") void applyDims();
   };
 
   const online = sim.internet?.available ?? true;
@@ -59,18 +63,17 @@ export function StatusPanel() {
         <div className="field">
           <span className="field-label">Ancho (m)</span>
           <input className="input" type="number" min="10" max="1000" step="1"
-            defaultValue={sim.factory?.width ?? 200}
-            onBlur={(e) => { setW(e.target.value); void applyDims(); }}
-            onChange={(e) => setW(e.target.value)} />
+            ref={wRef} defaultValue={sim.factory?.width ?? 200}
+            onKeyDown={onKeyDown} />
         </div>
         <div className="field">
           <span className="field-label">Alto (m)</span>
           <input className="input" type="number" min="10" max="1000" step="1"
-            defaultValue={sim.factory?.height ?? 150}
-            onBlur={(e) => { setH(e.target.value); void applyDims(); }}
-            onChange={(e) => setH(e.target.value)} />
+            ref={hRef} defaultValue={sim.factory?.height ?? 150}
+            onKeyDown={onKeyDown} />
         </div>
       </div>
+      <button className="btn" onClick={() => void applyDims()}>Aplicar dimensiones</button>
 
       <div className="stats">
         <div className="stat">

@@ -5,6 +5,7 @@
 #include <utility>
 
 #include "graph/edge.hpp"
+#include "models/shape.hpp"
 #include "routing/dijkstra.hpp"
 
 namespace sim {
@@ -59,6 +60,17 @@ crow::json::wvalue edgeToJson(const Edge& edge) {
     w["from"] = edge.from;
     w["to"] = edge.to;
     w["weight"] = edge.weight;
+    return w;
+}
+
+crow::json::wvalue shapeToJson(const Shape& shape) {
+    crow::json::wvalue w;
+    w["id"] = shape.id;
+    w["type"] = std::string(toString(shape.type));
+    w["x"] = shape.x;
+    w["y"] = shape.y;
+    w["width"] = shape.width;
+    w["height"] = shape.height;
     return w;
 }
 
@@ -183,6 +195,48 @@ bool parseNodeCreate(const crow::json::rvalue& body, Node& out, std::string& err
     return true;
 }
 
+// Parsea un payload de forma (estructura/objeto geométrico). Validación aquí,
+// los límites de la planta se aplican junto con Network::validShape.
+bool parseShape(const crow::json::rvalue& body, Shape& out, std::string& error) {
+    if (!body.has("id") || !parseString(body["id"], out.id) || out.id.empty()) {
+        error = "campo 'id' requerido (string no vacío)";
+        return false;
+    }
+    if (!body.has("type")) {
+        error = "campo 'type' requerido (rect|circle)";
+        return false;
+    }
+    std::string typeText;
+    if (!parseString(body["type"], typeText)) {
+        error = "'type' debe ser string";
+        return false;
+    }
+    const auto type = shapeTypeFromString(typeText);
+    if (!type.has_value()) {
+        error = "tipo inválido: '" + typeText + "' (rect|circle)";
+        return false;
+    }
+    out.type = type.value();
+
+    if (!body.has("x") || !body.has("y")) {
+        error = "campos 'x' e 'y' requeridos";
+        return false;
+    }
+    if (!parseDouble(body["x"], out.x) || !parseDouble(body["y"], out.y)) {
+        error = "'x'/'y' deben ser números";
+        return false;
+    }
+    if (!body.has("width") || !body.has("height")) {
+        error = "campos 'width' y 'height' requeridos";
+        return false;
+    }
+    if (!parseDouble(body["width"], out.width) || !parseDouble(body["height"], out.height)) {
+        error = "'width'/'height' deben ser números";
+        return false;
+    }
+    return true;
+}
+
 } // namespace
 
 void registerApiRoutes(crow::SimpleApp& app, Network& network) {
@@ -212,6 +266,10 @@ void registerApiRoutes(crow::SimpleApp& app, Network& network) {
             idx = 0;
             for (const std::string& id : isolated) {
                 w["isolated"][idx++] = id;
+            }
+            idx = 0;
+            for (const Shape& s : network.shapes()) {
+                w["shapes"][idx++] = shapeToJson(s);
             }
             return jsonResponse(std::move(w));
         });
@@ -393,6 +451,63 @@ void registerApiRoutes(crow::SimpleApp& app, Network& network) {
                     }
                 }
                 return jsonResponse(nodeToJson(*network.find(id)));
+            });
+
+    // ---- GET/POST /api/shapes ------------------------------------------------
+    CROW_ROUTE(app, "/api/shapes")
+        .methods(crow::HTTPMethod::Get, crow::HTTPMethod::Post)(
+            [&network](const crow::request& req) {
+                if (req.method == crow::HTTPMethod::Get) {
+                    crow::json::wvalue w = crow::json::wvalue::list();
+                    unsigned idx = 0;
+                    for (const Shape& s : network.shapes()) {
+                        w[idx++] = shapeToJson(s);
+                    }
+                    return jsonResponse(std::move(w));
+                }
+
+                const auto body = crow::json::load(req.body);
+                if (!body) {
+                    return jsonError(400, "JSON inválido");
+                }
+                Shape shape;
+                std::string error;
+                if (!parseShape(body, shape, error)) {
+                    return jsonError(400, error);
+                }
+                if (!network.addShape(shape)) {
+                    return jsonError(409, "id duplicado o forma fuera de la planta: '" + shape.id + "'");
+                }
+                return jsonResponse(shapeToJson(shape), 201);
+            });
+
+    // ---- PUT/DELETE /api/shapes/{id} -----------------------------------------
+    CROW_ROUTE(app, "/api/shapes/<string>")
+        .methods(crow::HTTPMethod::Put, crow::HTTPMethod::Delete)(
+            [&network](const crow::request& req, std::string id) {
+                if (req.method == crow::HTTPMethod::Delete) {
+                    if (!network.removeShape(id)) {
+                        return jsonError(404, "forma no encontrada: '" + id + "'");
+                    }
+                    return crow::response(204);
+                }
+
+                const auto body = crow::json::load(req.body);
+                if (!body) {
+                    return jsonError(400, "JSON inválido");
+                }
+                Shape shape;
+                std::string error;
+                if (!parseShape(body, shape, error)) {
+                    return jsonError(400, error);
+                }
+                if (shape.id != id) {
+                    return jsonError(400, "el 'id' del cuerpo debe coincidir con la URL");
+                }
+                if (!network.updateShape(shape)) {
+                    return jsonError(404, "forma no encontrada: '" + id + "'");
+                }
+                return jsonResponse(shapeToJson(shape));
             });
 
     // ---- GET /api/connections ------------------------------------------------

@@ -2,6 +2,7 @@ import { useEffect } from "react";
 
 import { FactoryCanvas } from "./components/FactoryCanvas";
 import { NodeFormPanel } from "./components/NodeFormPanel";
+import { ShapeFormPanel } from "./components/ShapeFormPanel";
 import { StatusPanel } from "./components/StatusPanel";
 import { Toolbar } from "./components/Toolbar";
 import { AppProvider, useApp } from "./state/store";
@@ -27,6 +28,7 @@ function Shell() {
         </div>
         <aside className="sidebar">
           <NodeFormPanel />
+          <ShapeFormPanel />
           <StatusPanel />
         </aside>
       </div>

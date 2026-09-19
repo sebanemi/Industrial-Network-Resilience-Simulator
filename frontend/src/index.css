@@ -317,6 +317,24 @@ a { color: inherit; }
 }
 .isolated-item .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--danger); box-shadow: 0 0 6px var(--danger); }
 
+/* ===== SHAPE LIST ===== */
+.list-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: var(--space-sm) var(--space-md);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--fg-muted);
+  font-size: var(--fs-sm);
+  font-family: var(--font-mono);
+  cursor: pointer;
+}
+.list-item:hover { border-color: var(--fg-dim); }
+.list-item.active { border-color: var(--warning); color: var(--fg); }
+.list-item .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--sensor); }
+
 /* ===== STATS ===== */
 .stats { display: flex; gap: var(--space-md); margin-top: var(--space-md); padding-top: var(--space-md); border-top: 1px solid var(--border); }
 .stat { flex: 1; text-align: center; }
@@ -351,11 +369,11 @@ a { color: inherit; }
 
 .grid line { vector-effect: non-scaling-stroke; }
 .grid-minor { stroke: #1a2530; stroke-width: 1; }
-.grid-major { stroke: #3a4a5a; stroke-width: 2; }
+.grid-major { stroke: #4a5c70; stroke-width: 2; }
 
 .edges .edge-line {
-  stroke: var(--border-bright);
-  stroke-width: 2.5;
+  stroke: #8fa5bd;
+  stroke-width: 3;
   stroke-linecap: round;
   vector-effect: non-scaling-stroke;
   transition: stroke var(--fast), stroke-width var(--fast);
@@ -384,9 +402,31 @@ a { color: inherit; }
   stroke-dasharray: 6 4;
   vector-effect: non-scaling-stroke;
   transition: opacity var(--fast);
-  opacity: 0.35;
+  opacity: 0.3;
 }
-.range-server { fill: var(--server-glow); stroke: var(--server); opacity: 0.35; }
+.range-server { fill: var(--server-glow); stroke: var(--server); opacity: 0.3; }
+
+/* ===== SHAPES (estructuras / paredes / máquinas) ===== */
+.shapes .shape { cursor: move; }
+.shape-rect {
+  fill: rgba(125, 150, 173, 0.18);
+  stroke: #7d96ad;
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+}
+.shape-circle {
+  fill: rgba(125, 150, 173, 0.18);
+  stroke: #7d96ad;
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+}
+.shape-selected {
+  fill: none;
+  stroke: var(--warning);
+  stroke-width: 2;
+  stroke-dasharray: 6 4;
+  vector-effect: non-scaling-stroke;
+}
 
 .ruler line { stroke: var(--fg-dim); stroke-width: 2; vector-effect: non-scaling-stroke; }
 .ruler text { fill: var(--fg-dim); font-size: 3; font-family: var(--font-mono); vector-effect: non-scaling-stroke; }

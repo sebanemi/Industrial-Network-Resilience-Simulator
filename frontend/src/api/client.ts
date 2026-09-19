@@ -3,11 +3,14 @@ import type {
   FactoryDto,
   FactoryPatch,
   NewNodePayload,
+  NewShapePayload,
   NodeDto,
   NodePatch,
   NodeStatus,
   NodeType,
   RouteDto,
+  ShapeDto,
+  ShapeType,
   SimulationDto,
 } from "../models/types";
 
@@ -74,6 +77,12 @@ export const api = {
   getConnections: () => request<ConnectionDto[]>("/connections"),
   computeRoute: (source: string) =>
     request<RouteDto>("/routes", { method: "POST", body: JSON.stringify({ source }) }),
+  listShapes: () => request<ShapeDto[]>("/shapes"),
+  createShape: (payload: NewShapePayload) =>
+    request<ShapeDto>("/shapes", { method: "POST", body: JSON.stringify(payload) }),
+  updateShape: (id: string, payload: ShapeDto) =>
+    request<ShapeDto>(`/shapes/${id}`, { method: "PUT", body: JSON.stringify(payload) }),
+  deleteShape: (id: string) => request<void>(`/shapes/${id}`, { method: "DELETE" }),
 };
 
 export function defaultRangeFor(type: NodeType): number | null {
@@ -95,6 +104,15 @@ export function nextIdFor(type: NodeType, nodes: NodeDto[]): string {
   const prefix = type === "SENSOR" ? "SENSOR" : "ESP";
   let n = 1;
   while (nodes.some((node) => node.id === `${prefix}-${String(n).padStart(2, "0")}`)) {
+    n += 1;
+  }
+  return `${prefix}-${String(n).padStart(2, "0")}`;
+}
+
+export function nextShapeId(type: ShapeType, shapes: ShapeDto[]): string {
+  const prefix = type === "rect" ? "RECT" : "CIRC";
+  let n = 1;
+  while (shapes.some((shape) => shape.id === `${prefix}-${String(n).padStart(2, "0")}`)) {
     n += 1;
   }
   return `${prefix}-${String(n).padStart(2, "0")}`;

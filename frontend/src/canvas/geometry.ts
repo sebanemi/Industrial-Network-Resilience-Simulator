@@ -19,7 +19,7 @@ export interface Size {
 }
 
 export const KM_PER_PX_DEFAULT = 0.3; // metros por píxel al hacer fit (referencia)
-export const SPACING_M = 20; // menor espaciado de grid (metros)
+export const SPACING_M = 50; // menor espaciado de grid (metros)
 export const MAJOR_EVERY = 1; // una línea mayor cada espacio
 export const MARGIN_M = 30; // margen alrededor de la planta al encuadrar
 
@@ -31,8 +31,11 @@ export function fitView(factory: Size, viewport: Size): ViewBox {
   const scale = Math.min(availW / factory.width, availH / factory.height);
   const w = factory.width * scale;
   const h = factory.height * scale;
-  const x0 = (viewport.width - w) / 2;
-  const y0 = (viewport.height - h) / 2;
+  // Centrar el viewBox en el centro de la planta
+  const centerX = factory.width / 2;
+  const centerY = factory.height / 2;
+  const x0 = centerX - w / 2;
+  const y0 = centerY - h / 2;
   return { x0, y0, w, h };
 }
 
