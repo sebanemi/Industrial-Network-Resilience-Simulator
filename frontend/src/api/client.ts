@@ -25,16 +25,29 @@ export class ApiError extends Error {
 }
 
 const BASE = "/api";
+const MAX_RETRIES = 3;
+const RETRY_DELAY = 1000; // ms
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+async function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+async function request<T>(path: string, init?: RequestInit, retryCount = 0): Promise<T> {
   let res: Response;
   try {
     res = await fetch(BASE + path, {
       headers: init?.body ? { "Content-Type": "application/json" } : undefined,
       ...init,
     });
-  } catch {
-    throw new ApiError(0, "No se pudo contactar al backend");
+  } catch (err) {
+    // Retry en errores de red (solo para mutations, no para GET)
+    const isMutation = init?.method && init.method !== "GET";
+    if (retryCount < MAX_RETRIES && isMutation) {
+      console.warn(`Request failed, retrying (${retryCount + 1}/${MAX_RETRIES})...`, path);
+      await sleep(RETRY_DELAY * (retryCount + 1));
+      return request<T>(path, init, retryCount + 1);
+    }
+    throw new ApiError(0, "No se pudo contactar al backend. Verifica tu conexión.");
   }
 
   if (res.status === 204) {
@@ -52,7 +65,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     const message =
       body && typeof body === "object" && "error" in body
         ? String((body as { error: unknown }).error)
-        : `HTTP ${res.status}`;
+        : `HTTP ${res.status}: ${res.statusText}`;
     throw new ApiError(res.status, message);
   }
   return body as T;

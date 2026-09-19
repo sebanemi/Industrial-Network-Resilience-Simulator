@@ -1,8 +1,8 @@
-import { useRef, type ChangeEvent, type KeyboardEvent } from "react";
+import { useRef, memo, type ChangeEvent, type KeyboardEvent } from "react";
 
 import { useApp } from "../state/store";
 
-export function StatusPanel() {
+function StatusPanel() {
   const { state, updateFactory, setRoute, computeRoute } = useApp();
   const { sim, route } = state;
 
@@ -136,3 +136,5 @@ export function StatusPanel() {
     </section>
   );
 }
+
+export default memo(StatusPanel);

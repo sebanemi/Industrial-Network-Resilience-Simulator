@@ -22,6 +22,10 @@ uint16_t readPort() {
 
 int main() {
     crow::SimpleApp app;
+
+    // Configurar nivel de logging
+    app.loglevel(crow::LogLevel::Info);
+
     sim::Network network;
     sim::registerApiRoutes(app, network);
 
@@ -30,6 +34,7 @@ int main() {
     CROW_LOG_INFO << "Industrial Network Resilience Simulator";
     CROW_LOG_INFO << "Escuchando en http://0.0.0.0:" << port;
 
-    app.port(port).concurrency(1).run();
+    // Aumentado concurrency para mejor rendimiento (4 hilos en lugar de 1)
+    app.port(port).concurrency(4).run();
     return 0;
 }

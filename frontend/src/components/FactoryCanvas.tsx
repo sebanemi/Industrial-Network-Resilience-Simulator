@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type MouseEvent, type PointerEvent } from "react";
+import { useEffect, useMemo, useRef, useState, useCallback, type MouseEvent, type PointerEvent } from "react";
 
 import { gridLines, fitView, screenToWorld, type Point, type Size, type ViewBox } from "../canvas/geometry";
 import { usePanZoom } from "../canvas/usePanZoom";
@@ -48,7 +48,7 @@ function NodeGlyph({ type, x, y, size, color }: { type: NodeDto["type"]; x: numb
   const scale = size / 24;
   return (
     <g
-      transform={`translate(${x} ${y}) scale(${scale}) translate(-12 -12)`}
+      transform={`translate(${x} ${y}) scale(${scale}) translate(-12, -12)`}
       fill="none"
       stroke={color}
       strokeWidth={2}
@@ -117,6 +117,14 @@ export function FactoryCanvas() {
     return () => observer.disconnect();
   }, []);
 
+  // Limpieza de refs al desmontar para evitar memory leaks
+  useEffect(() => {
+    return () => {
+      draggedRef.current = null;
+      dragShapeRef.current = null;
+    };
+  }, []);
+
   // Encuadre inicial: centrar la vista cuando sim y viewport están disponibles.
   // También re-encuadra cuando cambian las dimensiones de la planta.
   const dimsKey = sim ? `${sim.factory.width}x${sim.factory.height}` : "none";
@@ -160,11 +168,11 @@ export function FactoryCanvas() {
   const additive = state.addType != null;
   const shapeAdditive = state.addShapeType != null;
 
-  const positionOf = (node: NodeDto): Point => livePos.get(node.id) ?? { x: node.x, y: node.y };
-  const shapePositionOf = (shape: ShapeDto): Point => liveShapePos.get(shape.id) ?? { x: shape.x, y: shape.y };
-  const edges = deriveEdges(nodes, positionOf);
+  const positionOf = useCallback((node: NodeDto): Point => livePos.get(node.id) ?? { x: node.x, y: node.y }, [livePos]);
+  const shapePositionOf = useCallback((shape: ShapeDto): Point => liveShapePos.get(shape.id) ?? { x: shape.x, y: shape.y }, [liveShapePos]);
+  const edges = useMemo(() => deriveEdges(nodes, positionOf), [nodes, positionOf]);
 
-  const onBackgroundClick = (e: MouseEvent) => {
+  const onBackgroundClick = useCallback((e: MouseEvent) => {
     const rect = svgRef.current?.getBoundingClientRect();
     if (!rect || !vb) return;
     const world = screenToWorld(e.clientX, e.clientY, rect, vb);
@@ -191,9 +199,9 @@ export function FactoryCanvas() {
     if (!id) return; // por ejemplo, ya existe un SERVER
     void addNode({ id, type: state.addType, x: round2(x), y: round2(y), range: defaultRangeHint(state.addType) });
     setAddType(null);
-  };
+  }, [vb, factory, state.addShapeType, state.addType, shapes, nodes, createShape, setAddShapeType, addNode, setAddType]);
 
-  const onNodePointerDown = (e: PointerEvent, node: NodeDto) => {
+  const onNodePointerDown = useCallback((e: PointerEvent, node: NodeDto) => {
     e.stopPropagation();
     const rect = svgRef.current?.getBoundingClientRect();
     if (!rect || !vb) return;
@@ -201,9 +209,9 @@ export function FactoryCanvas() {
     draggedRef.current = { id: node.id, pointerId: e.pointerId, lastWorld: world, changed: false };
     e.currentTarget.setPointerCapture?.(e.pointerId);
     select(node.id);
-  };
+  }, [vb, select]);
 
-  const onNodePointerMove = (e: PointerEvent, node: NodeDto) => {
+  const onNodePointerMove = useCallback((e: PointerEvent, node: NodeDto) => {
     const drag = draggedRef.current;
     if (!drag || drag.id !== node.id || drag.pointerId !== e.pointerId) return;
     const rect = svgRef.current?.getBoundingClientRect();
@@ -220,9 +228,9 @@ export function FactoryCanvas() {
       y: Math.max(0, Math.min(factory.height, prev.y + dy)),
     };
     setLivePos((map) => new Map(map).set(node.id, next));
-  };
+  }, [vb, factory, positionOf]);
 
-  const onNodePointerUp = (_e: PointerEvent, node: NodeDto) => {
+  const onNodePointerUp = useCallback((_e: PointerEvent, node: NodeDto) => {
     const drag = draggedRef.current;
     if (!drag || drag.id !== node.id) return;
     draggedRef.current = null;
@@ -231,9 +239,9 @@ export function FactoryCanvas() {
       void updateNode(node.id, { x: round2(pos.x), y: round2(pos.y) });
     }
     setLivePos(new Map());
-  };
+  }, [livePos, updateNode]);
 
-  const onShapePointerDown = (e: PointerEvent, shape: ShapeDto) => {
+  const onShapePointerDown = useCallback((e: PointerEvent, shape: ShapeDto) => {
     e.stopPropagation();
     const rect = svgRef.current?.getBoundingClientRect();
     if (!rect || !vb) return;
@@ -241,9 +249,9 @@ export function FactoryCanvas() {
     dragShapeRef.current = { id: shape.id, pointerId: e.pointerId, lastWorld: world, changed: false };
     e.currentTarget.setPointerCapture?.(e.pointerId);
     selectShape(shape.id);
-  };
+  }, [vb, selectShape]);
 
-  const onShapePointerMove = (e: PointerEvent, shape: ShapeDto) => {
+  const onShapePointerMove = useCallback((e: PointerEvent, shape: ShapeDto) => {
     const drag = dragShapeRef.current;
     if (!drag || drag.id !== shape.id || drag.pointerId !== e.pointerId) return;
     const rect = svgRef.current?.getBoundingClientRect();
@@ -260,9 +268,9 @@ export function FactoryCanvas() {
       y: Math.max(0, Math.min(factory.height, prev.y + dy)),
     };
     setLiveShapePos((map) => new Map(map).set(shape.id, next));
-  };
+  }, [vb, factory, shapePositionOf]);
 
-  const onShapePointerUp = (_e: PointerEvent, shape: ShapeDto) => {
+  const onShapePointerUp = useCallback((_e: PointerEvent, shape: ShapeDto) => {
     const drag = dragShapeRef.current;
     if (!drag || drag.id !== shape.id) return;
     dragShapeRef.current = null;
@@ -271,7 +279,17 @@ export function FactoryCanvas() {
       void updateShape(shape.id, { x: round2(pos.x), y: round2(pos.y) });
     }
     setLiveShapePos(new Map());
-  };
+  }, [liveShapePos, updateShape]);
+
+  const onShapePointerCancel = useCallback(() => {
+    dragShapeRef.current = null;
+    setLiveShapePos(new Map());
+  }, []);
+
+  const onNodePointerCancel = useCallback(() => {
+    draggedRef.current = null;
+    setLivePos(new Map());
+  }, []);
 
   const labelVisible = (vb?.w ?? 0) / (viewport.width || 1) < 3;
 
@@ -331,10 +349,7 @@ export function FactoryCanvas() {
               onPointerDown: (e: PointerEvent) => onShapePointerDown(e, shape),
               onPointerMove: (e: PointerEvent) => onShapePointerMove(e, shape),
               onPointerUp: (e: PointerEvent) => onShapePointerUp(e, shape),
-              onPointerCancel: () => {
-                dragShapeRef.current = null;
-                setLiveShapePos(new Map());
-              },
+              onPointerCancel: onShapePointerCancel,
             };
             return shape.type === "rect" ? (
               <g key={shape.id} {...shapeProps}>
@@ -436,10 +451,7 @@ export function FactoryCanvas() {
               onPointerDown={(e) => onNodePointerDown(e, node)}
               onPointerMove={(e) => onNodePointerMove(e, node)}
               onPointerUp={(e) => onNodePointerUp(e, node)}
-              onPointerCancel={() => {
-                draggedRef.current = null;
-                setLivePos(new Map());
-              }}
+              onPointerCancel={onNodePointerCancel}
               onClick={(e) => e.stopPropagation()}
             >
               {inRoute && <circle cx={p.x} cy={p.y} r={r + 2} className="node-glow" />}

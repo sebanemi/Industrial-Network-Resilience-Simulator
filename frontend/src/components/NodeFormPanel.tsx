@@ -1,9 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, memo } from "react";
 
 import type { NodePatch, NodeType } from "../models/types";
 import { useApp } from "../state/store";
 
-export function NodeFormPanel() {
+function NodeFormPanel() {
   const { state, updateNode, deleteNode, computeRoute, select } = useApp();
   const node = state.sim?.nodes?.find((n) => n.id === state.selectedId) ?? null;
 
@@ -124,3 +124,5 @@ export function NodeFormPanel() {
     </section>
   );
 }
+
+export default memo(NodeFormPanel);

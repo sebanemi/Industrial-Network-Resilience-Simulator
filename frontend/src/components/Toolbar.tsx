@@ -1,8 +1,10 @@
+import { memo } from "react";
+
 import { nodeLabel } from "../models/presets";
 import type { NodeType } from "../models/types";
 import { useApp } from "../state/store";
 
-export function Toolbar() {
+function Toolbar() {
   const { state, setAddType, setInternet, toggleGrid, toggleRanges } = useApp();
   const internet = state.sim?.internet?.available ?? true;
 
@@ -50,3 +52,5 @@ export function Toolbar() {
     </header>
   );
 }
+
+export default memo(Toolbar);

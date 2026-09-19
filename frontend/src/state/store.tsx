@@ -25,6 +25,7 @@ import type {
 export interface AppState {
   sim: SimulationDto | null;
   loading: boolean;
+  loadingOperation: string | null; // Descripción de la operación en curso
   error: string | null;
   selectedId: string | null;
   selectedShapeId: string | null;
@@ -38,6 +39,7 @@ export interface AppState {
 const initialState: AppState = {
   sim: null,
   loading: true,
+  loadingOperation: null,
   error: null,
   selectedId: null,
   selectedShapeId: null,
@@ -78,21 +80,23 @@ export function AppProvider({ children }: { children: ReactNode }) {
   stateRef.current = state;
 
   const refresh = useCallback(async () => {
-    setState((s) => ({ ...s, loading: true, error: null }));
+    setState((s) => ({ ...s, loading: true, loadingOperation: "Cargando simulación", error: null }));
     try {
       const sim = await api.getSimulation();
-      setState((s) => ({ ...s, sim, loading: false }));
+      setState((s) => ({ ...s, sim, loading: false, loadingOperation: null }));
     } catch (err) {
       setState((s) => ({
         ...s,
         loading: false,
+        loadingOperation: null,
         error: err instanceof Error ? err.message : "Error desconocido",
       }));
     }
   }, []);
 
   const runMutation = useCallback(
-    async <T,>(action: () => Promise<T>): Promise<boolean> => {
+    async <T,>(action: () => Promise<T>, operationName: string = "Procesando"): Promise<boolean> => {
+      setState((s) => ({ ...s, loading: true, loadingOperation: operationName, error: null }));
       try {
         await action();
         await refresh();
@@ -100,6 +104,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       } catch (err) {
         setState((s) => ({
           ...s,
+          loading: false,
+          loadingOperation: null,
           error: err instanceof Error ? err.message : "Error desconocido",
         }));
         return false;
@@ -110,24 +116,24 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const addNode = useCallback(
     (payload: NewNodePayload) =>
-      runMutation(() => api.createNode(payload).then(() => undefined)),
+      runMutation(() => api.createNode(payload).then(() => undefined), "Agregando nodo"),
     [runMutation],
   );
 
   const updateNode = useCallback(
     (id: string, patch: NodePatch) =>
-      runMutation(() => api.updateNode(id, patch).then(() => undefined)),
+      runMutation(() => api.updateNode(id, patch).then(() => undefined), "Actualizando nodo"),
     [runMutation],
   );
 
   const deleteNode = useCallback(
-    (id: string) => runMutation(() => api.deleteNode(id)),
+    (id: string) => runMutation(() => api.deleteNode(id), "Eliminando nodo"),
     [runMutation],
   );
 
   const createShape = useCallback(
     (payload: NewShapePayload) =>
-      runMutation(() => api.createShape(payload).then(() => undefined)),
+      runMutation(() => api.createShape(payload).then(() => undefined), "Creando forma"),
     [runMutation],
   );
 
@@ -135,23 +141,23 @@ export function AppProvider({ children }: { children: ReactNode }) {
     async (id: string, patch: ShapePatch): Promise<boolean> => {
       const existing = (stateRef.current.sim?.shapes ?? []).find((s) => s.id === id);
       if (!existing) return false;
-      return runMutation(() => api.updateShape(id, { ...existing, ...patch }));
+      return runMutation(() => api.updateShape(id, { ...existing, ...patch }), "Actualizando forma");
     },
     [runMutation],
   );
 
   const deleteShape = useCallback(
-    (id: string) => runMutation(() => api.deleteShape(id)),
+    (id: string) => runMutation(() => api.deleteShape(id), "Eliminando forma"),
     [runMutation],
   );
 
   const updateFactory = useCallback(
-    (patch: FactoryPatch) => runMutation(() => api.updateFactory(patch)),
+    (patch: FactoryPatch) => runMutation(() => api.updateFactory(patch), "Actualizando dimensión"),
     [runMutation],
   );
 
   const setInternet = useCallback(
-    (available: boolean) => runMutation(() => api.setInternet(available)),
+    (available: boolean) => runMutation(() => api.setInternet(available), "Cambiando estado de Internet"),
     [runMutation],
   );
 

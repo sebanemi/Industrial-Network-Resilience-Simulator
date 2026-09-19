@@ -1,8 +1,8 @@
-import { useEffect, useState, type ChangeEvent, type KeyboardEvent } from "react";
+import { useEffect, useState, memo, type ChangeEvent, type KeyboardEvent } from "react";
 
 import { useApp } from "../state/store";
 
-export function ShapeFormPanel() {
+function ShapeFormPanel() {
   const { state, setAddShapeType, selectShape, updateShape, deleteShape } = useApp();
   const shapes = state.sim?.shapes ?? [];
   const selected = shapes.find((s) => s.id === state.selectedShapeId) ?? null;
@@ -138,9 +138,11 @@ export function ShapeFormPanel() {
             <button className="btn" onClick={() => void apply()}>Aplicar</button>
             <button className="btn danger" onClick={() => void deleteShape(selected.id)}>Eliminar</button>
           </div>
-          <button className="btn ghost btn-ghost" onClick={() => selectShape(null)}>Quitar selección</button>
+          <button className="btn ghost" onClick={() => selectShape(null)}>Quitar selección</button>
         </>
       )}
     </section>
   );
 }
+
+export default memo(ShapeFormPanel);
